@@ -4,10 +4,10 @@
 import React from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Terminal, Info } from 'lucide-react'; // Added Info icon
+import { Terminal, Info, BrainCircuit } from 'lucide-react'; // Added BrainCircuit for AI analysis
 
 interface AiAnalysisViewProps {
-  analysis: { schema: string; insights: string } | null;
+  analysis: { schema: string; insights: string } | null; // Matches AnalyzeJsonOutput structure
   isLoading: boolean;
   error: string;
 }
@@ -17,7 +17,7 @@ export function AiAnalysisView({ analysis, isLoading, error }: AiAnalysisViewPro
     return (
       <div className="mt-4 pt-4 border-t">
         <h3 className="text-lg font-semibold mb-3 text-primary flex items-center">
-          <Info className="mr-2 h-5 w-5" />
+          <BrainCircuit className="mr-2 h-5 w-5 animate-pulse" />
           AI Analysis
         </h3>
         <div className="space-y-3">
@@ -33,11 +33,11 @@ export function AiAnalysisView({ analysis, isLoading, error }: AiAnalysisViewPro
   if (error) {
     return (
       <div className="mt-4 pt-4 border-t">
-         <h3 className="text-lg font-semibold mb-3 text-destructive-foreground flex items-center">
+         <h3 className="text-lg font-semibold mb-3 text-destructive flex items-center">
           <Terminal className="mr-2 h-5 w-5" />
           AI Analysis Error
         </h3>
-        <Alert variant="destructive" className="bg-destructive/10 border-destructive/30">
+        <Alert variant="destructive" className="bg-destructive/10 border-destructive/30 text-destructive">
           <Terminal className="h-4 w-4 !text-destructive" />
           <AlertTitle>Analysis Failed</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
@@ -46,14 +46,14 @@ export function AiAnalysisView({ analysis, isLoading, error }: AiAnalysisViewPro
     );
   }
 
-  if (!analysis) {
+  if (!analysis || !analysis.schema || !analysis.insights) { // Ensure analysis and its properties exist
     return null; 
   }
 
   return (
     <div className="mt-4 pt-4 border-t">
       <h3 className="text-lg font-semibold mb-3 text-primary flex items-center">
-        <Info className="mr-2 h-5 w-5" />
+        <BrainCircuit className="mr-2 h-5 w-5" />
         AI-Powered Insights
       </h3>
       <div className="space-y-4">
@@ -71,3 +71,5 @@ export function AiAnalysisView({ analysis, isLoading, error }: AiAnalysisViewPro
     </div>
   );
 }
+
+    
