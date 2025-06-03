@@ -91,10 +91,10 @@ export default function HomePage() {
     <div className="flex flex-col h-screen bg-background text-foreground p-4 font-body">
       <header className="mb-6 text-center">
         <h1 className="text-4xl font-headline font-bold text-primary tracking-tight">
-          JSON Visage
+          JSON Parser
         </h1>
         <p className="text-muted-foreground mt-1">
-          Format, explore, and understand your JSON data with elegance.
+          Efficiently parse, explore, and understand your JSON data.
         </p>
       </header>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1 min-h-0">
