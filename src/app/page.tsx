@@ -154,7 +154,7 @@ export default function HomePage() {
     <>
       <div className="flex flex-col h-screen bg-background text-foreground p-4 font-body">
         <header className="mb-6 text-center">
-          <h1 className="text-4xl font-headline font-bold text-primary tracking-tight">
+          <h1 className="text-4xl font-headline font-bold tracking-tight bg-gradient-to-r from-yellow-400 via-orange-500 to-red-500 bg-clip-text text-transparent">
             JSON Parser
           </h1>
           <p className="text-muted-foreground mt-1">
@@ -219,3 +219,4 @@ export default function HomePage() {
     </>
   );
 }
+
