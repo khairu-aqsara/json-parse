@@ -1,6 +1,9 @@
 
 # JSON Parser with AI-Powered Insights
 
+![Screenshot 2025-06-03 at 12 05 16](https://github.com/user-attachments/assets/c071ba19-6e3d-44f3-8a1a-0f51609ca0f6)
+
+
 This is a Next.js web application that allows users to parse, view, analyze, and understand JSON data. It features a clean, interactive tree view for exploring JSON structures and leverages AI (via Genkit and Gemini) to automatically generate Zod schema suggestions and human-readable insights about the data.
 
 ## Key Features
