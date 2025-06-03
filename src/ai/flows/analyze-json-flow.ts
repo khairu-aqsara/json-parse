@@ -33,7 +33,6 @@ const AnalyzeJsonOutputSchema = z.object({
 export type AnalyzeJsonOutput = z.infer<typeof AnalyzeJsonOutputSchema>;
 
 export async function analyzeJsonData(input: AnalyzeJsonInput): Promise<AnalyzeJsonOutput> {
-  // The analyzeJsonFlow will be called with the full input, including apiKey
   return analyzeJsonFlow(input);
 }
 
@@ -63,77 +62,80 @@ For example:
 }
 `;
 
-
-const analyzeJsonPromptForDefaultUsage = ai.definePrompt({
-  name: 'analyzeJsonPrompt',
-  input: {schema: AnalyzeJsonInputSchema.pick({jsonString: true})}, // Only jsonString for default
-  output: {schema: AnalyzeJsonOutputSchema},
-  prompt: PROMPT_TEMPLATE,
-});
-
 const analyzeJsonFlow = ai.defineFlow(
   {
     name: 'analyzeJsonFlow',
-    inputSchema: AnalyzeJsonInputSchema, // Full input schema including apiKey
+    inputSchema: AnalyzeJsonInputSchema,
     outputSchema: AnalyzeJsonOutputSchema,
   },
   async (input) => {
-    // Basic validation: check if jsonString is potentially valid JSON before sending to AI
+    // Basic validation for jsonString
     try {
       JSON.parse(input.jsonString);
     } catch (e) {
       throw new Error("Invalid JSON string provided for analysis.");
     }
-
     if (input.jsonString.trim().length < 2) { // Minimal JSON is '{}' or '[]'
         throw new Error("JSON string is too short to be meaningful for analysis.");
     }
 
-    if (input.apiKey) {
-      const genAI = new GoogleGenerativeAI(input.apiKey);
-      // The model ID 'gemini-1.5-flash-latest' corresponds to 'googleai/gemini-2.0-flash' in genkit.ts
-      const model = genAI.getGenerativeModel({ 
-        model: "gemini-1.5-flash-latest",
-        safetySettings: [
-            { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-            { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-            { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-            { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-        ],
-        generationConfig: {
-          responseMimeType: "application/json",
-        }
-      });
+    // Explicitly check for a present and non-empty API key
+    if (!input.apiKey || input.apiKey.trim() === '') {
+      throw new Error("A Gemini API Key is required for AI analysis. Please set it in the API Key Settings.");
+    }
+
+    // API key is present, proceed with direct SDK usage
+    const genAI = new GoogleGenerativeAI(input.apiKey.trim());
+    const model = genAI.getGenerativeModel({
+      model: "gemini-1.5-flash-latest", // Model for direct SDK usage
+      safetySettings: [
+          { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+          { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+          { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+          { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+      ],
+      generationConfig: {
+        responseMimeType: "application/json",
+      }
+    });
+    
+    const interpolatedPrompt = PROMPT_TEMPLATE.replace('{{{jsonString}}}', input.jsonString);
+
+    try {
+      const result = await model.generateContent(interpolatedPrompt);
+      const response = result.response;
+
+      if (!response) {
+        throw new Error("AI model did not return a valid response object.");
+      }
+      const text = response.text();
+       if (text === null || text === undefined || text.trim() === "") {
+        throw new Error("AI model returned an empty or invalid response text.");
+      }
       
-      const interpolatedPrompt = PROMPT_TEMPLATE.replace('{{{jsonString}}}', input.jsonString);
+      const parsedOutput = JSON.parse(text);
+      const validatedOutput = AnalyzeJsonOutputSchema.parse(parsedOutput);
+      return validatedOutput;
 
-      try {
-        const result = await model.generateContent(interpolatedPrompt);
-        const response = result.response;
-        const text = response.text();
-        
-        // Parse the JSON string response from the model
-        const parsedOutput = JSON.parse(text);
-        // Validate the parsed output against our Zod schema
-        const validatedOutput = AnalyzeJsonOutputSchema.parse(parsedOutput);
-        return validatedOutput;
-
-      } catch (e: any) {
-        // Handle potential errors from API call or parsing/validation
-        if (e.message?.includes("API key not valid")) {
-             throw new Error("API key not valid. Please pass a valid API key.");
-        }
-        console.error("Error during AI analysis with custom API key:", e.message);
-        console.error("Raw AI output (if available):", e.message.includes("JSON.parse") ? text : "N/A");
-        throw new Error(`AI analysis failed with custom key: ${e.message}`);
+    } catch (e: any) {
+      let descriptiveError = `AI analysis failed.`;
+      if (e.message?.toLowerCase().includes("api key not valid")) {
+           descriptiveError = "The provided API key is not valid. Please check your Gemini API Key in settings and ensure it has the correct permissions.";
+      } else if (e.message?.toLowerCase().includes("access token scope")) {
+          descriptiveError = "The provided API key may have insufficient permissions (scope). Please check the API key configuration in your Google Cloud project."
+      } else if (e.message?.toLowerCase().includes("billing") || e.message?.includes("quota") || e.message?.includes("蕗")) {
+           descriptiveError = "AI analysis failed. This might be due to API quota limits or billing issues with your Google Cloud project. Please check your project configuration.";
+      } else if (e.message?.toLowerCase().includes("failed_precondition") && e.message?.toLowerCase().includes("api key")) {
+          descriptiveError = "AI analysis failed: API key issue. Ensure the key is correct, active, and the Gemini API is enabled in your Google Cloud project with billing set up.";
+      } else if (e.message?.toLowerCase().includes("access withheld") || e.message?.toLowerCase().includes("permission denied")) {
+          descriptiveError = "AI analysis failed: Access to the model was denied. This may be due to regional restrictions, API permissions, or other policy enforcement. Please check your API key and project settings."
+      } else {
+          descriptiveError = `AI analysis failed: ${e.message || "An unknown error occurred."}`;
       }
-    } else {
-      // Use the default Genkit configured AI (which might use env variables or ADC)
-      const {output} = await analyzeJsonPromptForDefaultUsage({jsonString: input.jsonString});
-      if (!output) {
-        throw new Error('AI analysis did not produce an output (default Genkit path).');
-      }
-      return output;
+      // For debugging, you might want to log the original error on the server
+      // console.error("Original AI analysis error with custom key:", e.message, e.stack);
+      throw new Error(descriptiveError);
     }
   }
 );
+
