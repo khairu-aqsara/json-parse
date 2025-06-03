@@ -1,4 +1,5 @@
- "use client";
+
+"use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Textarea } from '@/components/ui/textarea';
@@ -6,7 +7,10 @@ import { useToast } from '@/hooks/use-toast';
 import { JsonInputControls } from '@/components/JsonInputControls';
 import { JsonOutputControls } from '@/components/JsonOutputControls';
 import { JsonTreeView } from '@/components/JsonTreeView';
+import { AiAnalysisView } from '@/components/AiAnalysisView';
 import { Card, CardContent } from '@/components/ui/card';
+import { analyzeJsonData } from '@/ai/flows/analyze-json-flow';
+import type { AnalyzeJsonInput, AnalyzeJsonOutput } from '@/ai/flows/analyze-json-flow';
 
 export default function HomePage() {
   const [rawJson, setRawJson] = useState<string>('');
@@ -14,6 +18,11 @@ export default function HomePage() {
   const [error, setError] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set(['root']));
+  
+  const [aiAnalysis, setAiAnalysis] = useState<AnalyzeJsonOutput | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
+  const [aiError, setAiError] = useState<string>('');
+
   const { toast } = useToast();
 
   useEffect(() => {
@@ -21,13 +30,16 @@ export default function HomePage() {
       setParsedJson(null);
       setError('');
       setExpandedPaths(new Set());
+      setAiAnalysis(null); // Clear AI analysis
+      setAiError('');     // Clear AI error
       return;
     }
     try {
       const parsed = JSON.parse(rawJson);
       setParsedJson(parsed);
       setError('');
-      // Reset expansion, keep root expanded if it's an object/array
+      setAiAnalysis(null); // Clear AI analysis on new JSON
+      setAiError('');     // Clear AI error
       if (typeof parsed === 'object' && parsed !== null) {
         setExpandedPaths(new Set(['root']));
       } else {
@@ -37,6 +49,8 @@ export default function HomePage() {
       setParsedJson(null);
       setError(`Error parsing JSON: ${e.message}`);
       setExpandedPaths(new Set());
+      setAiAnalysis(null);
+      setAiError('');
     }
   }, [rawJson]);
 
@@ -58,7 +72,7 @@ export default function HomePage() {
 
   const handleClearInput = () => {
     setRawJson('');
-    setSearchTerm(''); // Also clear search term
+    setSearchTerm('');
   };
 
   const handleCopyFormatted = async () => {
@@ -87,6 +101,33 @@ export default function HomePage() {
     });
   }, []);
 
+  const handleAnalyzeJson = async () => {
+    if (!parsedJson) {
+      toast({ variant: "destructive", title: "No JSON", description: "Please provide valid JSON to analyze." });
+      return;
+    }
+    if (rawJson.trim() === '') {
+      toast({ variant: "destructive", title: "Empty Input", description: "Cannot analyze empty JSON." });
+      return;
+    }
+
+    setIsAnalyzing(true);
+    setAiAnalysis(null);
+    setAiError('');
+
+    try {
+      const input: AnalyzeJsonInput = { jsonString: rawJson };
+      const result = await analyzeJsonData(input);
+      setAiAnalysis(result);
+      toast({ title: "AI Analysis Complete", description: "Schema and insights generated." });
+    } catch (e: any) {
+      setAiError(e.message || "An unknown error occurred during AI analysis.");
+      toast({ variant: "destructive", title: "AI Analysis Error", description: e.message || "Failed to analyze JSON." });
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-screen bg-background text-foreground p-4 font-body">
       <header className="mb-6 text-center">
@@ -94,7 +135,7 @@ export default function HomePage() {
           JSON Parser
         </h1>
         <p className="text-muted-foreground mt-1">
-          Efficiently parse, explore, and understand your JSON data.
+          Efficiently parse, explore, and understand your JSON data. Now with AI-powered insights!
         </p>
       </header>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1 min-h-0">
@@ -121,13 +162,15 @@ export default function HomePage() {
           )}
         </Card>
 
-        {/* Right Panel: Formatted Output */}
+        {/* Right Panel: Formatted Output & AI Analysis */}
         <Card className="flex flex-col overflow-hidden shadow-lg">
           <JsonOutputControls
             searchTerm={searchTerm}
             onSearchChange={setSearchTerm}
             onCopy={handleCopyFormatted}
             hasOutput={!!parsedJson}
+            onAnalyze={handleAnalyzeJson}
+            isAnalyzing={isAnalyzing}
           />
           <CardContent className="p-4 flex-1 overflow-auto">
             <JsonTreeView
@@ -135,6 +178,11 @@ export default function HomePage() {
               searchTerm={searchTerm}
               expandedPaths={expandedPaths}
               toggleNode={toggleNode}
+            />
+            <AiAnalysisView
+              analysis={aiAnalysis}
+              isLoading={isAnalyzing}
+              error={aiError}
             />
           </CardContent>
         </Card>
