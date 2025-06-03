@@ -4,7 +4,7 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Search, Copy, Sparkles, Loader2 } from 'lucide-react';
+import { Search, Copy, Sparkles, Loader2, Settings } from 'lucide-react'; // Added Settings
 
 interface JsonOutputControlsProps {
   searchTerm: string;
@@ -13,9 +13,18 @@ interface JsonOutputControlsProps {
   hasOutput: boolean;
   onAnalyze: () => void;
   isAnalyzing: boolean;
+  onOpenApiKeyDialog: () => void; // New prop
 }
 
-export function JsonOutputControls({ searchTerm, onSearchChange, onCopy, hasOutput, onAnalyze, isAnalyzing }: JsonOutputControlsProps) {
+export function JsonOutputControls({
+  searchTerm,
+  onSearchChange,
+  onCopy,
+  hasOutput,
+  onAnalyze,
+  isAnalyzing,
+  onOpenApiKeyDialog, // New prop
+}: JsonOutputControlsProps) {
   return (
     <div className="flex items-center space-x-2 p-2 bg-card rounded-t-md border-b">
       <div className="relative flex-grow">
@@ -40,6 +49,9 @@ export function JsonOutputControls({ searchTerm, onSearchChange, onCopy, hasOutp
       <Button variant="outline" size="sm" onClick={onCopy} disabled={!hasOutput} title="Copy Formatted JSON">
         <Copy className="mr-2 h-4 w-4" />
         Copy
+      </Button>
+      <Button variant="outline" size="icon" onClick={onOpenApiKeyDialog} title="API Key Settings">
+        <Settings className="h-4 w-4" />
       </Button>
     </div>
   );

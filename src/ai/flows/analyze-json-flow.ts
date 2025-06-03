@@ -10,9 +10,11 @@
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
 
 const AnalyzeJsonInputSchema = z.object({
   jsonString: z.string().describe('The raw JSON string to be analyzed.'),
+  apiKey: z.string().optional().describe('Optional Gemini API Key to use for this request.'),
 });
 export type AnalyzeJsonInput = z.infer<typeof AnalyzeJsonInputSchema>;
 
@@ -31,14 +33,11 @@ const AnalyzeJsonOutputSchema = z.object({
 export type AnalyzeJsonOutput = z.infer<typeof AnalyzeJsonOutputSchema>;
 
 export async function analyzeJsonData(input: AnalyzeJsonInput): Promise<AnalyzeJsonOutput> {
+  // The analyzeJsonFlow will be called with the full input, including apiKey
   return analyzeJsonFlow(input);
 }
 
-const analyzeJsonPrompt = ai.definePrompt({
-  name: 'analyzeJsonPrompt',
-  input: {schema: AnalyzeJsonInputSchema},
-  output: {schema: AnalyzeJsonOutputSchema},
-  prompt: `You are an expert data analyst and TypeScript developer specializing in Zod schemas.
+const PROMPT_TEMPLATE = `You are an expert data analyst and TypeScript developer specializing in Zod schemas.
 Given the following JSON data, please perform two tasks:
 
 1.  **Generate a Zod Schema:** Create a Zod schema string that accurately represents the structure of this JSON.
@@ -56,13 +55,26 @@ JSON Data:
 {{{jsonString}}}
 \`\`\`
 
-Return your response in the specified output format, with the Zod schema string in 'suggestedZodSchema' and the insights in 'dataInsights'.`,
+Return your response as a valid JSON object with two keys: "suggestedZodSchema" (string) and "dataInsights" (string).
+For example:
+{
+  "suggestedZodSchema": "z.object({ ... })",
+  "dataInsights": "This data appears to be..."
+}
+`;
+
+
+const analyzeJsonPromptForDefaultUsage = ai.definePrompt({
+  name: 'analyzeJsonPrompt',
+  input: {schema: AnalyzeJsonInputSchema.pick({jsonString: true})}, // Only jsonString for default
+  output: {schema: AnalyzeJsonOutputSchema},
+  prompt: PROMPT_TEMPLATE,
 });
 
 const analyzeJsonFlow = ai.defineFlow(
   {
     name: 'analyzeJsonFlow',
-    inputSchema: AnalyzeJsonInputSchema,
+    inputSchema: AnalyzeJsonInputSchema, // Full input schema including apiKey
     outputSchema: AnalyzeJsonOutputSchema,
   },
   async (input) => {
@@ -77,10 +89,51 @@ const analyzeJsonFlow = ai.defineFlow(
         throw new Error("JSON string is too short to be meaningful for analysis.");
     }
 
-    const {output} = await analyzeJsonPrompt(input);
-    if (!output) {
-      throw new Error('AI analysis did not produce an output.');
+    if (input.apiKey) {
+      const genAI = new GoogleGenerativeAI(input.apiKey);
+      // The model ID 'gemini-1.5-flash-latest' corresponds to 'googleai/gemini-2.0-flash' in genkit.ts
+      const model = genAI.getGenerativeModel({ 
+        model: "gemini-1.5-flash-latest",
+        safetySettings: [
+            { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+            { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+            { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+            { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+        ],
+        generationConfig: {
+          responseMimeType: "application/json",
+        }
+      });
+      
+      const interpolatedPrompt = PROMPT_TEMPLATE.replace('{{{jsonString}}}', input.jsonString);
+
+      try {
+        const result = await model.generateContent(interpolatedPrompt);
+        const response = result.response;
+        const text = response.text();
+        
+        // Parse the JSON string response from the model
+        const parsedOutput = JSON.parse(text);
+        // Validate the parsed output against our Zod schema
+        const validatedOutput = AnalyzeJsonOutputSchema.parse(parsedOutput);
+        return validatedOutput;
+
+      } catch (e: any) {
+        // Handle potential errors from API call or parsing/validation
+        if (e.message?.includes("API key not valid")) {
+             throw new Error("API key not valid. Please pass a valid API key.");
+        }
+        console.error("Error during AI analysis with custom API key:", e.message);
+        console.error("Raw AI output (if available):", e.message.includes("JSON.parse") ? text : "N/A");
+        throw new Error(`AI analysis failed with custom key: ${e.message}`);
+      }
+    } else {
+      // Use the default Genkit configured AI (which might use env variables or ADC)
+      const {output} = await analyzeJsonPromptForDefaultUsage({jsonString: input.jsonString});
+      if (!output) {
+        throw new Error('AI analysis did not produce an output (default Genkit path).');
+      }
+      return output;
     }
-    return output;
   }
 );
